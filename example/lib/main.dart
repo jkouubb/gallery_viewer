@@ -6,7 +6,7 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +21,7 @@ class MyApp extends StatelessWidget {
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+  const MyHomePage({Key? key}) : super(key: key);
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -31,11 +31,6 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     List<Widget> widgetList = [
-      Container(
-        width: 100,
-        height: 100,
-        color: Colors.blue,
-      ),
       Container(
         width: MediaQuery.of(context).size.width,
         height: 300,
@@ -58,12 +53,9 @@ class _MyHomePageState extends State<MyHomePage> {
             getItemSize: () async {
               switch (index) {
                 case 0:
-                  return const Size(100, 100);
-
-                case 1:
                   return Size(MediaQuery.of(context).size.width, 300);
 
-                case 2:
+                case 1:
                   return Size(300, MediaQuery.of(context).size.height);
 
                 default:

@@ -34,12 +34,25 @@ class GalleryViewItemGestureConfig {
   final void Function()? onLongPress;
 }
 
+enum _GalleryViewItemStatus {
+  idle,
+  scaling,
+  moving,
+}
+
 abstract class GalleryViewItemController {
   GalleryViewItemController(
-      {required this.contentConfig, required this.gestureConfig, required Size backgroundSize, Offset initialOffset = Offset.zero, double initialScale = 1.0}) {
+      {required this.contentConfig,
+      required this.gestureConfig,
+      required Size backgroundSize,
+      Offset initialOffset = Offset.zero,
+      double initialScale = 1.0,
+      double minScale = 1.0,
+      double maxScale = 5.0}) {
     _itemOffset = initialOffset;
     _itemScale = initialScale;
-    _backgroundSize = backgroundSize;
+    _minScale = minScale;
+    _maxScale = maxScale;
 
     _streamController = StreamController<GalleryViewItemValue>(
       onListen: () {
@@ -57,32 +70,24 @@ abstract class GalleryViewItemController {
   late Offset _itemOffset;
   Offset get itemOffset => _itemOffset;
 
+  late double _minScale;
+  late double _maxScale;
   late double _itemScale;
   double get itemScale => _itemScale;
 
-  Size? _itemSize;
-  set itemSize(Size value) {
-    _itemSize = value;
-  }
+  Size? itemSize;
 
-  Size get itemSize => _itemSize!;
-
-  late Size _backgroundSize;
-
-  bool _moving = false;
-  bool _scaling = false;
+  _GalleryViewItemStatus _status = _GalleryViewItemStatus.idle;
 
   void dispose() {
     _streamController.close();
   }
 
-  bool handleDragStart(DragStartDetails details);
+  bool handleDragStart(ScaleStartDetails details, Size backgroundSize);
 
-  bool handleDragUpdate(DragUpdateDetails details);
+  bool handleDragUpdate(ScaleUpdateDetails details, Size backgroundSize);
 
-  bool handleDragEnd(DragEndDetails details);
-
-  bool handleDragCancel();
+  bool handleDragEnd(ScaleEndDetails details, Size backgroundSize);
 
   void onTap() {
     if (gestureConfig.onTap != null) {
@@ -105,86 +110,79 @@ abstract class GalleryViewItemController {
 
 class DefaultGalleryViewItemController extends GalleryViewItemController {
   DefaultGalleryViewItemController({
-    required super.contentConfig,
-    required super.gestureConfig,
-    required super.backgroundSize,
-    super.initialOffset = Offset.zero,
-    super.initialScale = 1.0,
-  });
+    required GalleryViewItemContentConfig contentConfig,
+    required GalleryViewItemGestureConfig gestureConfig,
+    required Size backgroundSize,
+    Offset initialOffset = Offset.zero,
+    double initialScale = 1.0,
+  }) : super(contentConfig: contentConfig, gestureConfig: gestureConfig, backgroundSize: backgroundSize, initialScale: initialScale, initialOffset: initialOffset);
 
   @override
-  bool handleDragStart(DragStartDetails details) {
+  bool handleDragStart(ScaleStartDetails details, Size backgroundSize) {
     if (!_streamController.hasListener) {
       return false;
     }
 
-    _moving = _checkIfCanMove(_itemOffset);
+    _updateStatus(details.pointerCount, _itemOffset, _itemScale, backgroundSize);
 
-    return _moving;
+    return _status != _GalleryViewItemStatus.idle;
   }
 
   @override
-  bool handleDragUpdate(DragUpdateDetails details) {
-    if (!_streamController.hasListener || !_moving) {
+  bool handleDragUpdate(ScaleUpdateDetails details, Size backgroundSize) {
+    if (!_streamController.hasListener || _status == _GalleryViewItemStatus.idle) {
       return false;
     }
 
-    Offset intendOffset = _itemOffset + details.delta;
+    _updateStatus(details.pointerCount, _itemOffset + details.focalPointDelta, details.scale, backgroundSize);
 
-    if (!_checkIfCanMove(intendOffset)) {
-      _moving = false;
-      return _moving;
+    return _status != _GalleryViewItemStatus.idle;
+  }
+
+  @override
+  bool handleDragEnd(ScaleEndDetails details, Size backgroundSize) {
+    if (!_streamController.hasListener || _status == _GalleryViewItemStatus.idle) {
+      return false;
     }
 
-    Offset finalOffset = _getFinalOffset(intendOffset);
-
-    _itemOffset = finalOffset;
-    _streamController.add(GalleryViewItemValue(scale: _itemScale, offset: _itemOffset));
+    _GalleryViewItemStatus preStatus = _status;
+    _updateStatus(details.pointerCount, _itemOffset, _itemScale, backgroundSize);
 
     return true;
   }
 
-  @override
-  bool handleDragEnd(DragEndDetails details) {
-    if (!_streamController.hasListener || !_moving) {
-      return false;
-    }
+  Offset _getFinalOffset(Offset intendOffset, Size backgroundSize) {
+    assert(itemSize != null);
 
-    _moving = false;
+    Size itemSizeWithScale = itemSize! * _itemScale;
 
-    return true;
-  }
-
-  @override
-  bool handleDragCancel() {
-    if (!_streamController.hasListener || !_moving) {
-      return false;
-    }
-
-    _moving = false;
-
-    return true;
-  }
-
-  bool _checkIfCanMove(Offset intendOffset) {
-    assert(_itemSize != null);
-
-    Size itemSizeWithScale = _itemSize! * _itemScale;
-
-    double limitY = (_backgroundSize.width - itemSizeWithScale.width).abs() / 2;
-    double limitX = (_backgroundSize.height - itemSizeWithScale.height).abs() / 2;
-
-    return intendOffset.dx.abs() <= limitX || intendOffset.dy.abs() <= limitY;
-  }
-
-  Offset _getFinalOffset(Offset intendOffset) {
-    assert(_itemSize != null);
-
-    Size itemSizeWithScale = _itemSize! * _itemScale;
-
-    double limitY = (_backgroundSize.width - itemSizeWithScale.width).abs() / 2;
-    double limitX = (_backgroundSize.height - itemSizeWithScale.height).abs() / 2;
+    double limitX = (backgroundSize.width - itemSizeWithScale.width).abs() / 2;
+    double limitY = (backgroundSize.height - itemSizeWithScale.height).abs() / 2;
 
     return Offset(intendOffset.dx.clamp(limitX * -1, limitX), intendOffset.dy.clamp(limitY * -1, limitY));
+  }
+
+  void _updateStatus(int pointerCount, Offset intendOffset, double intendDouble, Size backgroundSize) {
+    if (pointerCount == 0) {
+      _status = _GalleryViewItemStatus.idle;
+      return;
+    }
+
+    if (pointerCount == 1) {
+      Size itemSizeWithScale = itemSize! * _itemScale;
+
+      double limitX = (backgroundSize.width - itemSizeWithScale.width).abs() / 2;
+      double limitY = (backgroundSize.height - itemSizeWithScale.height).abs() / 2;
+
+      bool canMove = intendOffset.dx.abs() <= limitX && intendOffset.dy.abs() <= limitY;
+
+      _status = canMove ? _GalleryViewItemStatus.moving : _GalleryViewItemStatus.idle;
+      return;
+    }
+
+    if (pointerCount >= 2) {
+      _status = _GalleryViewItemStatus.scaling;
+      return;
+    }
   }
 }

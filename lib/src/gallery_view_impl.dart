@@ -2,7 +2,9 @@ part of 'gallery_view.dart';
 
 class _GalleryViewImpl extends StatefulWidget {
   const _GalleryViewImpl(
-      {required this.scrollDirection, required this.galleryPageController, required this.itemCount, required this.itemControllerBuilder, this.onPageChanged});
+      {required this.backgroundSize, required this.scrollDirection, required this.galleryPageController, required this.itemCount, required this.itemControllerBuilder, this.onPageChanged});
+
+  final Size backgroundSize;
 
   final Axis scrollDirection;
   final GalleryPageController? galleryPageController;
@@ -21,8 +23,6 @@ class _GalleryViewImplState extends State<_GalleryViewImpl> {
   final List<GalleryViewItemController> _itemControllerList = [];
 
   late int _currentIndex;
-
-  Drag? _drag;
 
   @override
   void initState() {
@@ -68,24 +68,13 @@ class _GalleryViewImplState extends State<_GalleryViewImpl> {
     return RawGestureDetector(
       behavior: HitTestBehavior.opaque,
       gestures: {
-        VerticalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
-          () => VerticalDragGestureRecognizer(),
-          (VerticalDragGestureRecognizer instance) {
+        ScaleGestureRecognizer: GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
+          () => ScaleGestureRecognizer(),
+          (ScaleGestureRecognizer instance) {
             instance
               ..onStart = _handleDragStart
               ..onUpdate = _handleDragUpdate
-              ..onEnd = _handleDragEnd
-              ..onCancel = _handleDragCancel;
-          },
-        ),
-        HorizontalDragGestureRecognizer: GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
-          () => HorizontalDragGestureRecognizer(),
-          (HorizontalDragGestureRecognizer instance) {
-            instance
-              ..onStart = _handleDragStart
-              ..onUpdate = _handleDragUpdate
-              ..onEnd = _handleDragEnd
-              ..onCancel = _handleDragCancel;
+              ..onEnd = _handleDragEnd;
           },
         ),
         TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
@@ -107,71 +96,50 @@ class _GalleryViewImplState extends State<_GalleryViewImpl> {
           },
         ),
       },
-      child: PageView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        scrollDirection: widget.scrollDirection,
-        controller: _galleryPageController,
-        itemCount: widget.itemCount,
-        itemBuilder: (context, index) {
-          return GalleryViewItem(galleryViewItemController: _itemControllerList[index]);
-        },
-        onPageChanged: (index) {
-          _currentIndex = index;
+      child: Container(
+        width: widget.backgroundSize.width,
+        height: widget.backgroundSize.height,
+        color: Colors.black54,
+        child: IgnorePointer(
+          ignoring: true,
+          child: PageView.builder(
+            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            scrollDirection: widget.scrollDirection,
+            controller: _galleryPageController,
+            itemCount: widget.itemCount,
+            itemBuilder: (context, index) {
+              return GalleryViewItem(galleryViewItemController: _itemControllerList[index]);
+            },
+            onPageChanged: (index) {
+              _currentIndex = index;
 
-          if (widget.onPageChanged != null) {
-            widget.onPageChanged!(index);
-          }
-        },
+              if (widget.onPageChanged != null) {
+                widget.onPageChanged!(index);
+              }
+            },
+          ),
+        ),
       ),
     );
   }
 
-  void _handleDragStart(DragStartDetails details) {
-    if (_itemControllerList[_currentIndex].handleDragStart(details)) {
+  void _handleDragStart(ScaleStartDetails details) {
+    if (_itemControllerList[_currentIndex].handleDragStart(details, widget.backgroundSize)) {
       return;
-    }
-
-    assert(_drag == null);
-    _drag = _galleryPageController.position.drag(details, () {
-      assert(_drag != null);
-      _drag!.cancel();
-      _drag = null;
-    });
-  }
-
-  void _handleDragUpdate(DragUpdateDetails details) {
-    if (_itemControllerList[_currentIndex].handleDragUpdate(details)) {
-      return;
-    }
-
-    _drag ??= _galleryPageController.position.drag(DragStartDetails(globalPosition: details.globalPosition, localPosition: details.localPosition), () {
-      assert(_drag != null);
-      _drag!.cancel();
-      _drag = null;
-    });
-
-    _drag!.update(details);
-  }
-
-  void _handleDragEnd(DragEndDetails details) {
-    if (_itemControllerList[_currentIndex].handleDragEnd(details)) {
-      return;
-    }
-
-    if (_drag != null) {
-      _drag!.cancel();
-      _drag = null;
     }
   }
 
-  void _handleDragCancel() {
-    if (_itemControllerList[_currentIndex].handleDragCancel()) {
+  void _handleDragUpdate(ScaleUpdateDetails details) {
+    if (_itemControllerList[_currentIndex].handleDragUpdate(details, widget.backgroundSize)) {
       return;
     }
 
-    if (_drag != null) {
-      _drag!.cancel();
-      _drag = null;
+    _galleryPageController.position.moveTo(_galleryPageController.position.pixels + (widget.scrollDirection == Axis.horizontal ? details.focalPointDelta.dx : details.focalPointDelta.dy) * -1);
+  }
+
+  void _handleDragEnd(ScaleEndDetails details) {
+    if (_itemControllerList[_currentIndex].handleDragEnd(details, widget.backgroundSize)) {
+      return;
     }
   }
 
